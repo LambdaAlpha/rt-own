@@ -1,0 +1,9 @@
+[package]
+name = "rt-own"
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "runtime ownership: owner, sharer and holder"
+repository = "https://github.com/LambdaAlpha/rt-own"
+keywords = ["rc", "refcell", "box", "reference", "ownership"]
+categories = ["memory-management"]
