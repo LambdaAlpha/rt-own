@@ -2,6 +2,7 @@
 name = "rt-own"
 version = "0.0.1"
 edition = "2021"
+rust-version = "1.56.1"
 license = "MIT OR Apache-2.0"
 description = "runtime ownership: owner, sharer and holder"
 repository = "https://github.com/LambdaAlpha/rt-own"
