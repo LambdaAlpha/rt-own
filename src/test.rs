@@ -1,14 +1,10 @@
-use std::ops::{
-    Deref,
-    DerefMut,
-};
+use std::ops::Deref;
+use std::ops::DerefMut;
 
-use crate::{
-    Holder,
-    Owner,
-    Sharer,
-    State,
-};
+use crate::Holder;
+use crate::Owner;
+use crate::Sharer;
+use crate::State;
 
 // explicitly drop all variables to make their lifetime clear
 #[test]
@@ -134,11 +130,7 @@ fn test_mix_ref() -> Result<(), State> {
 }
 
 fn assert_state(
-    ref_state: State,
-    is_dropped: bool,
-    holder_cnt: usize,
-    sharer_cnt: usize,
-    is_owned: bool,
+    ref_state: State, is_dropped: bool, holder_cnt: usize, sharer_cnt: usize, is_owned: bool,
 ) {
     assert_eq!(ref_state.is_dropped(), is_dropped);
     assert_eq!(ref_state.holder_count(), holder_cnt);
@@ -197,9 +189,7 @@ fn test_circular() -> Result<(), State> {
     let mut o: Owner<Circular> = Owner::new(Circular { _ref: None });
     let h = Holder::from(&o);
 
-    *o = Circular {
-        _ref: Some(Box::new(h)),
-    };
+    *o = Circular { _ref: Some(Box::new(h)) };
 
     drop(o);
 

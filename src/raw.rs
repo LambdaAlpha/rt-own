@@ -1,23 +1,13 @@
-use std::{
-    alloc,
-    cell::{
-        Cell,
-        UnsafeCell,
-    },
-    fmt::{
-        Debug,
-        Formatter,
-    },
-    hash::{
-        Hash,
-        Hasher,
-    },
-    marker::PhantomData,
-    ptr::{
-        self,
-        NonNull,
-    },
-};
+use std::alloc;
+use std::cell::Cell;
+use std::cell::UnsafeCell;
+use std::fmt::Debug;
+use std::fmt::Formatter;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::marker::PhantomData;
+use std::ptr;
+use std::ptr::NonNull;
 
 pub(crate) struct RawRef<D: ?Sized> {
     ptr: NonNull<SharedCell<D>>,
@@ -26,9 +16,7 @@ pub(crate) struct RawRef<D: ?Sized> {
 
 impl<D: ?Sized> RawRef<D> {
     pub(crate) fn new(d: D, ref_type: RefType) -> Self
-    where
-        D: Sized,
-    {
+    where D: Sized {
         RawRef {
             ptr: Box::leak(Box::new(SharedCell::new(d, ref_type))).into(),
             phantom: PhantomData,
@@ -37,10 +25,7 @@ impl<D: ?Sized> RawRef<D> {
 
     pub(crate) fn clone_to(&self, ref_type: RefType) -> Result<RawRef<D>, State> {
         self.shared().clone_to(ref_type)?;
-        Ok(RawRef {
-            ptr: self.ptr,
-            phantom: PhantomData,
-        })
+        Ok(RawRef { ptr: self.ptr, phantom: PhantomData })
     }
 
     pub(crate) fn drop_from(&self, ref_type: RefType) {
@@ -50,7 +35,7 @@ impl<D: ?Sized> RawRef<D> {
             let layout = alloc::Layout::for_value(self.shared());
             // SAFETY:
             // state promises that we can and should dealloc
-            // we are the last RawCell accessible to the ptr of shared cell and we are dropped
+            // we are the last RawCell accessible to the ptr of shared cell, and we are dropped
             // we carefully don't make any ref to shared cell when calling dealloc
             unsafe {
                 alloc::dealloc(self.ptr.as_ptr().cast(), layout);
@@ -59,7 +44,7 @@ impl<D: ?Sized> RawRef<D> {
     }
 
     pub(crate) fn shared(&self) -> &SharedCell<D> {
-        // SAFETY: when self is alive, ptr is always valid and we never call ptr.as_mut()
+        // SAFETY: when self is alive, ptr is always valid, and we never call ptr.as_mut()
         unsafe { self.ptr.as_ref() }
     }
 }
@@ -72,7 +57,7 @@ impl<D: ?Sized> Debug for RawRef<D> {
 
 impl<D: ?Sized> PartialEq for RawRef<D> {
     fn eq(&self, other: &Self) -> bool {
-        self.ptr == other.ptr
+        ptr::addr_eq(self.ptr.as_ptr(), other.ptr.as_ptr())
     }
 }
 
@@ -91,13 +76,8 @@ pub(crate) struct SharedCell<D: ?Sized> {
 
 impl<D: ?Sized> SharedCell<D> {
     fn new(d: D, ref_type: RefType) -> Self
-    where
-        D: Sized,
-    {
-        SharedCell {
-            state: Cell::new(State::new(ref_type)),
-            data: UnsafeCell::new(d),
-        }
+    where D: Sized {
+        SharedCell { state: Cell::new(State::new(ref_type)), data: UnsafeCell::new(d) }
     }
 
     pub(crate) fn state(&self) -> State {
@@ -119,26 +99,29 @@ impl<D: ?Sized> SharedCell<D> {
 
     // SAFETY: call only once and there is no ref
     pub(crate) unsafe fn move_data(&self) -> D
-    where
-        D: Sized,
-    {
+    where D: Sized {
         self.state.set(self.state.get().drop());
-        ptr::read(self.data.get())
+        // SAFETY: call only once and there is no ref
+        unsafe { ptr::read(self.data.get()) }
     }
 
     // SAFETY: call only once and there is no ref
     pub(crate) unsafe fn drop_data(&self) {
         self.state.set(self.state.get().drop());
-        ptr::drop_in_place(self.data.get());
+        // SAFETY: call only once and there is no ref
+        unsafe {
+            ptr::drop_in_place(self.data.get());
+        }
     }
 
     // SAFETY: data is dropped
     pub(crate) unsafe fn reinit_data(&self, d: D)
-    where
-        D: Sized,
-    {
+    where D: Sized {
         self.state.set(self.state.get().reinit());
-        ptr::write(self.data.get(), d);
+        // SAFETY: data is dropped
+        unsafe {
+            ptr::write(self.data.get(), d);
+        }
     }
 
     fn should_dealloc(&self) -> bool {
@@ -147,12 +130,14 @@ impl<D: ?Sized> SharedCell<D> {
 
     // SAFETY: make sure data not dropped and there is no owner
     pub(crate) unsafe fn deref<'a>(&self) -> &'a D {
-        self.data.get().as_ref().unwrap()
+        // SAFETY: make sure data not dropped and there is no owner
+        unsafe { self.data.get().as_ref().unwrap() }
     }
 
     // SAFETY: make sure data not dropped and there is no ref
     pub(crate) unsafe fn deref_mut<'a>(&self) -> &'a mut D {
-        self.data.get().as_mut().unwrap()
+        // SAFETY: make sure data not dropped and there is no ref
+        unsafe { self.data.get().as_mut().unwrap() }
     }
 }
 
@@ -186,30 +171,14 @@ impl State {
     pub fn is_owned(&self) -> bool {
         self.sharer_cnt < 0
     }
-}
 
-impl Debug for State {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("State")
-            .field("dropped", &self.is_dropped())
-            .field("holder", &self.holder_count())
-            .field("sharer", &self.sharer_count())
-            .field("owned", &self.is_owned())
-            .finish()
-    }
-}
-
-impl State {
     fn new(ref_type: RefType) -> Self {
         let (keep_cnt, read_cnt) = match ref_type {
             RefType::Holder => (1, 0),
             RefType::Sharer => (0, 1),
             RefType::Owner => (0, isize::MIN),
         };
-        State {
-            holder_cnt: keep_cnt,
-            sharer_cnt: read_cnt,
-        }
+        State { holder_cnt: keep_cnt, sharer_cnt: read_cnt }
     }
 
     fn clone_to(mut self, ref_type: RefType) -> Result<State, State> {
@@ -263,5 +232,16 @@ impl State {
 
     fn should_dealloc(&self) -> bool {
         self.holder_cnt == isize::MIN && self.sharer_cnt == 0
+    }
+}
+
+impl Debug for State {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("State")
+            .field("dropped", &self.is_dropped())
+            .field("holder", &self.holder_count())
+            .field("sharer", &self.sharer_count())
+            .field("owned", &self.is_owned())
+            .finish()
     }
 }

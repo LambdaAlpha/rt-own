@@ -1,27 +1,15 @@
-use std::{
-    fmt::{
-        Debug,
-        Formatter,
-    },
-    hash::{
-        Hash,
-        Hasher,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
-};
+use std::fmt::Debug;
+use std::fmt::Formatter;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::ops::Deref;
+use std::ops::DerefMut;
 
-use crate::{
-    raw::{
-        RawRef,
-        RefType,
-    },
-    Holder,
-    Sharer,
-    State,
-};
+use crate::Holder;
+use crate::Sharer;
+use crate::State;
+use crate::raw::RawRef;
+use crate::raw::RefType;
 
 pub struct Owner<D: ?Sized> {
     pub(crate) raw: RawRef<D>,
@@ -29,12 +17,8 @@ pub struct Owner<D: ?Sized> {
 
 impl<D: ?Sized> Owner<D> {
     pub fn new(d: D) -> Self
-    where
-        D: Sized,
-    {
-        Owner {
-            raw: RawRef::new(d, RefType::Owner),
-        }
+    where D: Sized {
+        Owner { raw: RawRef::new(d, RefType::Owner) }
     }
 
     pub fn state(o: &Owner<D>) -> State {
@@ -42,9 +26,7 @@ impl<D: ?Sized> Owner<D> {
     }
 
     pub fn move_data(o: Owner<D>) -> D
-    where
-        D: Sized,
-    {
+    where D: Sized {
         // SAFETY:
         // we have exclusive ref
         // we consume the Owner when taking
@@ -81,18 +63,14 @@ impl<D: ?Sized> DerefMut for Owner<D> {
 impl<D: ?Sized> TryFrom<&Holder<D>> for Owner<D> {
     type Error = State;
     fn try_from(value: &Holder<D>) -> Result<Self, Self::Error> {
-        Ok(Owner {
-            raw: RawRef::clone_to(&value.raw, RefType::Owner)?,
-        })
+        Ok(Owner { raw: RawRef::clone_to(&value.raw, RefType::Owner)? })
     }
 }
 
 impl<D: ?Sized> TryFrom<Holder<D>> for Owner<D> {
     type Error = State;
     fn try_from(value: Holder<D>) -> Result<Self, Self::Error> {
-        Ok(Owner {
-            raw: RawRef::clone_to(&value.raw, RefType::Owner)?,
-        })
+        Ok(Owner { raw: RawRef::clone_to(&value.raw, RefType::Owner)? })
     }
 }
 
@@ -100,9 +78,7 @@ impl<D: ?Sized> TryFrom<Sharer<D>> for Owner<D> {
     type Error = State;
     fn try_from(value: Sharer<D>) -> Result<Self, Self::Error> {
         let h = Holder::from(value);
-        Ok(Owner {
-            raw: RawRef::clone_to(&h.raw, RefType::Owner)?,
-        })
+        Ok(Owner { raw: RawRef::clone_to(&h.raw, RefType::Owner)? })
     }
 }
 
