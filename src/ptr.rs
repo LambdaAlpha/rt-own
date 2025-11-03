@@ -9,88 +9,103 @@ use std::marker::PhantomData;
 use std::ptr;
 use std::ptr::NonNull;
 
-pub(crate) struct RawRef<D: ?Sized> {
-    ptr: NonNull<SharedCell<D>>,
-    phantom: PhantomData<SharedCell<D>>,
+pub(crate) struct Ptr<D: ?Sized> {
+    ptr: NonNull<StateCell<D>>,
+    phantom: PhantomData<StateCell<D>>,
 }
 
-impl<D: ?Sized> RawRef<D> {
-    pub(crate) fn new(d: D, ref_type: RefType) -> Self
+#[derive(Debug, Copy, Clone)]
+pub(crate) enum Role {
+    Holder,
+    Viewer,
+    Owner,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+pub struct State {
+    // the sign bit indicates whether data has been dropped (negative)
+    // other bits indicates holder cnt
+    holder_cnt: isize,
+    // the sign bit indicates whether data has been owned (negative)
+    // other bits indicates viewer cnt
+    viewer_cnt: isize,
+}
+
+impl<D: ?Sized> Ptr<D> {
+    pub(crate) fn new(d: D, role: Role) -> Self
     where D: Sized {
-        RawRef {
-            ptr: Box::leak(Box::new(SharedCell::new(d, ref_type))).into(),
-            phantom: PhantomData,
-        }
+        let ptr = Box::leak(Box::new(StateCell::new(d, role)));
+        Ptr { ptr: ptr.into(), phantom: PhantomData }
     }
 
-    pub(crate) fn clone_to(&self, ref_type: RefType) -> Result<RawRef<D>, State> {
-        self.shared().clone_to(ref_type)?;
-        Ok(RawRef { ptr: self.ptr, phantom: PhantomData })
+    pub(crate) fn clone_to(&self, role: Role) -> Result<Ptr<D>, State> {
+        self.cell().clone_to(role)?;
+        Ok(Ptr { ptr: self.ptr, phantom: PhantomData })
     }
 
-    pub(crate) fn drop_from(&self, ref_type: RefType) {
-        self.shared().drop_from(ref_type);
+    pub(crate) fn drop_from(&self, role: Role) {
+        self.cell().drop_from(role);
 
-        if self.shared().should_dealloc() {
-            let layout = alloc::Layout::for_value(self.shared());
+        if self.cell().should_dealloc() {
+            let layout = alloc::Layout::for_value(self.cell());
             // SAFETY:
             // state promises that we can and should dealloc
-            // we are the last RawCell accessible to the ptr of shared cell, and we are dropped
-            // we carefully don't make any ref to shared cell when calling dealloc
+            // we are the last Ptr accessible to the ptr of PtrCell, and we are dropped
+            // we carefully don't make any ref to PtrCell when calling dealloc
             unsafe {
                 alloc::dealloc(self.ptr.as_ptr().cast(), layout);
             }
         }
     }
 
-    pub(crate) fn shared(&self) -> &SharedCell<D> {
+    pub(crate) fn cell(&self) -> &StateCell<D> {
         // SAFETY: when self is alive, ptr is always valid, and we never call ptr.as_mut()
         unsafe { self.ptr.as_ref() }
     }
 }
 
-impl<D: ?Sized> Debug for RawRef<D> {
+impl<D: ?Sized> Debug for Ptr<D> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         self.ptr.fmt(f)
     }
 }
 
-impl<D: ?Sized> PartialEq for RawRef<D> {
+impl<D: ?Sized> PartialEq for Ptr<D> {
     fn eq(&self, other: &Self) -> bool {
         ptr::addr_eq(self.ptr.as_ptr(), other.ptr.as_ptr())
     }
 }
 
-impl<D: ?Sized> Eq for RawRef<D> {}
+impl<D: ?Sized> Eq for Ptr<D> {}
 
-impl<D: ?Sized> Hash for RawRef<D> {
+impl<D: ?Sized> Hash for Ptr<D> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.ptr.hash(state);
     }
 }
 
-pub(crate) struct SharedCell<D: ?Sized> {
+pub(crate) struct StateCell<D: ?Sized> {
     state: Cell<State>,
     data: UnsafeCell<D>,
 }
 
-impl<D: ?Sized> SharedCell<D> {
-    fn new(d: D, ref_type: RefType) -> Self
+impl<D: ?Sized> StateCell<D> {
+    fn new(d: D, role: Role) -> Self
     where D: Sized {
-        SharedCell { state: Cell::new(State::new(ref_type)), data: UnsafeCell::new(d) }
+        StateCell { state: Cell::new(State::new(role)), data: UnsafeCell::new(d) }
     }
 
     pub(crate) fn state(&self) -> State {
         self.state.get()
     }
 
-    fn clone_to(&self, ref_type: RefType) -> Result<(), State> {
-        self.state.set(self.state.get().clone_to(ref_type)?);
+    fn clone_to(&self, role: Role) -> Result<(), State> {
+        self.state.set(self.state.get().clone_to(role)?);
         Ok(())
     }
 
-    fn drop_from(&self, ref_type: RefType) {
-        self.state.set(self.state.get().drop_from(ref_type));
+    fn drop_from(&self, role: Role) {
+        self.state.set(self.state.get().drop_from(role));
         if self.state.get().should_drop() {
             // SAFETY: state promises that we can and should drop
             unsafe { self.drop_data() }
@@ -141,76 +156,62 @@ impl<D: ?Sized> SharedCell<D> {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub(crate) enum RefType {
-    Holder,
-    Sharer,
-    Owner,
-}
-
-#[derive(PartialEq, Eq, Copy, Clone)]
-pub struct State {
-    // the sign bit indicates whether data has been dropped (negative)
-    // other bits indicates holder cnt
-    holder_cnt: isize,
-    // the sign bit indicates whether data has been owned (negative)
-    // other bits indicates sharer cnt
-    sharer_cnt: isize,
-}
-
 impl State {
     pub fn is_dropped(&self) -> bool {
         self.holder_cnt < 0
     }
+
     pub fn holder_count(&self) -> usize {
         (self.holder_cnt & isize::MAX) as usize
     }
-    pub fn sharer_count(&self) -> usize {
-        (self.sharer_cnt & isize::MAX) as usize
+
+    pub fn viewer_count(&self) -> usize {
+        (self.viewer_cnt & isize::MAX) as usize
     }
+
     pub fn is_owned(&self) -> bool {
-        self.sharer_cnt < 0
+        self.viewer_cnt < 0
     }
 
-    fn new(ref_type: RefType) -> Self {
-        let (keep_cnt, read_cnt) = match ref_type {
-            RefType::Holder => (1, 0),
-            RefType::Sharer => (0, 1),
-            RefType::Owner => (0, isize::MIN),
+    fn new(role: Role) -> Self {
+        let (holder_cnt, viewer_cnt) = match role {
+            Role::Holder => (1, 0),
+            Role::Viewer => (0, 1),
+            Role::Owner => (0, isize::MIN),
         };
-        State { holder_cnt: keep_cnt, sharer_cnt: read_cnt }
+        State { holder_cnt, viewer_cnt }
     }
 
-    fn clone_to(mut self, ref_type: RefType) -> Result<State, State> {
-        match ref_type {
-            RefType::Holder => {
+    fn clone_to(mut self, role: Role) -> Result<State, State> {
+        match role {
+            Role::Holder => {
                 self.holder_cnt += 1;
                 Ok(self)
             }
-            RefType::Sharer => {
+            Role::Viewer => {
                 if self.is_dropped() || self.is_owned() {
                     Err(self)
                 } else {
-                    self.sharer_cnt += 1;
+                    self.viewer_cnt += 1;
                     Ok(self)
                 }
             }
-            RefType::Owner => {
-                if self.is_dropped() || self.sharer_cnt != 0 {
+            Role::Owner => {
+                if self.is_dropped() || self.viewer_cnt != 0 {
                     Err(self)
                 } else {
-                    self.sharer_cnt = isize::MIN;
+                    self.viewer_cnt = isize::MIN;
                     Ok(self)
                 }
             }
         }
     }
 
-    fn drop_from(mut self, ref_type: RefType) -> State {
-        match ref_type {
-            RefType::Holder => self.holder_cnt -= 1,
-            RefType::Sharer => self.sharer_cnt -= 1,
-            RefType::Owner => self.sharer_cnt = 0,
+    fn drop_from(mut self, role: Role) -> State {
+        match role {
+            Role::Holder => self.holder_cnt -= 1,
+            Role::Viewer => self.viewer_cnt -= 1,
+            Role::Owner => self.viewer_cnt = 0,
         }
         self
     }
@@ -227,11 +228,11 @@ impl State {
 
     // if already dropped, return false
     fn should_drop(&self) -> bool {
-        self.holder_cnt == 0 && self.sharer_cnt == 0
+        self.holder_cnt == 0 && self.viewer_cnt == 0
     }
 
     fn should_dealloc(&self) -> bool {
-        self.holder_cnt == isize::MIN && self.sharer_cnt == 0
+        self.holder_cnt == isize::MIN && self.viewer_cnt == 0
     }
 }
 
@@ -240,7 +241,7 @@ impl Debug for State {
         f.debug_struct("State")
             .field("dropped", &self.is_dropped())
             .field("holder", &self.holder_count())
-            .field("sharer", &self.sharer_count())
+            .field("viewer", &self.viewer_count())
             .field("owned", &self.is_owned())
             .finish()
     }

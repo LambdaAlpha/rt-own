@@ -1,12 +1,17 @@
 # Runtime Ownership for Rust
 
-This library implements the concept of dynamic ownership, providing users with three key types: `Owner`, `Sharer`, and `Holder`. These types can play different roles in managing shared data, enabling flexible ownership control.
+This library implements the concept of dynamic ownership by introducing three core types: `Owner`, `Viewer`, and `Holder`. These types serve distinct roles in managing shared data, enabling flexible and safe ownership control at runtime.
 
-Type Descriptions
+## Type Descriptions
 
-- `Owner`: Holds ownership of shared data. An `Owner` can read, write, or even drop shared data. Note that an `Owner` type can only coexist with some `Holder` instances and cannot coexist with other `Owner` or `Sharer` instances.
-- `Sharer`: Shares ownership of shared data. A `Sharer` can read shared data but cannot perform write operations. `Sharer` can coexist with other `Sharer` or `Holder` instances.
-- `Holder`: Holds a reference to shared data but does not own it. A `Holder` cannot read or write shared data; its main purpose is to facilitate role conversion between `Owner` and `Sharer`.
+- **`Owner`**:  
+  Represents exclusive ownership of shared data. The `Owner` can view, modify, or destroy the shared data. Only one `Owner` may exist at a time for a given piece of data, and it cannot coexist with another `Owner` or `Viewer`. However, it may coexist with one or more `Holder` instances.
+
+- **`Viewer`**:  
+  Represents shared, read-only access to the data. A `Viewer` can view the shared data but cannot modify it. Multiple `Viewer` instances can coexist with each other, and they may also exist alongside `Holder` instances.
+
+- **`Holder`**:  
+  Holds a reference to shared data without the ability to directly view or modify it. A `Holder` can be downgraded from an `Owner` or `Viewer`, and later upgraded to either a `Viewer` or an `Owner` as needed.
 
 ## License
 
