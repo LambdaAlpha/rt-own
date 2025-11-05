@@ -7,29 +7,32 @@ use crate::Owner;
 use crate::State;
 use crate::Viewer;
 use crate::ptr::Ptr;
-use crate::ptr::Role;
 
 pub struct Holder<D: ?Sized> {
-    pub(crate) ptr: Ptr<D>,
+    ptr: Ptr<D>,
 }
 
 impl<D: ?Sized> Holder<D> {
-    pub fn new(d: D) -> Self
+    pub fn new(data: D) -> Self
     where D: Sized {
-        Holder { ptr: Ptr::new(d, Role::Holder) }
+        Self { ptr: Ptr::new_holder(data) }
     }
 
-    pub fn state(h: &Holder<D>) -> State {
-        h.ptr.cell().state()
+    pub fn state(holder: &Self) -> State {
+        holder.ptr.cell().state()
     }
 
-    pub fn reinit(h: &Holder<D>, d: D) -> Result<(), State>
+    pub(crate) fn ptr(&self) -> &Ptr<D> {
+        &self.ptr
+    }
+
+    pub fn reinit(holder: &Self, data: D) -> Result<(), State>
     where D: Sized {
-        let state = h.ptr.cell().state();
+        let state = holder.ptr.cell().state();
         if state.is_dropped() {
             // SAFETY: data is dropped
             unsafe {
-                h.ptr.cell().reinit_data(d);
+                holder.ptr.cell().reinit_data(data);
             }
             Ok(())
         } else {
@@ -40,37 +43,37 @@ impl<D: ?Sized> Holder<D> {
 
 impl<D: ?Sized> Clone for Holder<D> {
     fn clone(&self) -> Self {
-        Holder { ptr: Ptr::clone_to(&self.ptr, Role::Holder).unwrap() }
-    }
-}
-
-impl<D: ?Sized> From<&Viewer<D>> for Holder<D> {
-    fn from(value: &Viewer<D>) -> Self {
-        Holder { ptr: Ptr::clone_to(&value.ptr, Role::Holder).unwrap() }
-    }
-}
-
-impl<D: ?Sized> From<Viewer<D>> for Holder<D> {
-    fn from(value: Viewer<D>) -> Self {
-        Holder { ptr: Ptr::clone_to(&value.ptr, Role::Holder).unwrap() }
-    }
-}
-
-impl<D: ?Sized> From<&Owner<D>> for Holder<D> {
-    fn from(value: &Owner<D>) -> Self {
-        Holder { ptr: Ptr::clone_to(&value.ptr, Role::Holder).unwrap() }
-    }
-}
-
-impl<D: ?Sized> From<Owner<D>> for Holder<D> {
-    fn from(value: Owner<D>) -> Self {
-        Holder { ptr: Ptr::clone_to(&value.ptr, Role::Holder).unwrap() }
+        Self { ptr: self.ptr.clone_to_holder() }
     }
 }
 
 impl<D: ?Sized> Drop for Holder<D> {
     fn drop(&mut self) {
-        self.ptr.drop_from(Role::Holder);
+        self.ptr.drop_from_holder();
+    }
+}
+
+impl<D: ?Sized> From<&Viewer<D>> for Holder<D> {
+    fn from(value: &Viewer<D>) -> Self {
+        Self { ptr: value.ptr().clone_to_holder() }
+    }
+}
+
+impl<D: ?Sized> From<Viewer<D>> for Holder<D> {
+    fn from(value: Viewer<D>) -> Self {
+        Self { ptr: value.ptr().clone_to_holder() }
+    }
+}
+
+impl<D: ?Sized> From<&Owner<D>> for Holder<D> {
+    fn from(value: &Owner<D>) -> Self {
+        Self { ptr: value.ptr().clone_to_holder() }
+    }
+}
+
+impl<D: ?Sized> From<Owner<D>> for Holder<D> {
+    fn from(value: Owner<D>) -> Self {
+        Self { ptr: value.ptr().clone_to_holder() }
     }
 }
 
@@ -82,7 +85,7 @@ impl<D: ?Sized> Debug for Holder<D> {
 
 impl<D: Default> Default for Holder<D> {
     fn default() -> Self {
-        Holder::new(D::default())
+        Self::new(D::default())
     }
 }
 

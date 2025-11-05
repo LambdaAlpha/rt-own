@@ -9,39 +9,42 @@ use crate::Holder;
 use crate::State;
 use crate::Viewer;
 use crate::ptr::Ptr;
-use crate::ptr::Role;
 
 pub struct Owner<D: ?Sized> {
-    pub(crate) ptr: Ptr<D>,
+    ptr: Ptr<D>,
 }
 
 impl<D: ?Sized> Owner<D> {
-    pub fn new(d: D) -> Self
+    pub fn new(data: D) -> Self
     where D: Sized {
-        Owner { ptr: Ptr::new(d, Role::Owner) }
+        Self { ptr: Ptr::new_owner(data) }
     }
 
-    pub fn state(o: &Owner<D>) -> State {
-        o.ptr.cell().state()
+    pub fn state(owner: &Self) -> State {
+        owner.ptr.cell().state()
     }
 
-    pub fn move_data(o: Owner<D>) -> D
+    pub(crate) fn ptr(&self) -> &Ptr<D> {
+        &self.ptr
+    }
+
+    pub fn move_data(owner: Self) -> D
     where D: Sized {
         // SAFETY:
         // we have exclusive ref
         // we consume the Owner when taking
         // we change the state to dropped
         // so we won't access the data anymore
-        unsafe { o.ptr.cell().move_data() }
+        unsafe { owner.ptr.cell().move_data() }
     }
 
-    pub fn drop_data(o: Owner<D>) {
+    pub fn drop_data(owner: Self) {
         // SAFETY:
         // we have exclusive ref
         // we consume the Owner when deleting
         // we change the state to dropped
         // so we won't access the data anymore
-        unsafe { o.ptr.cell().drop_data() }
+        unsafe { owner.ptr.cell().drop_data() }
     }
 }
 
@@ -60,31 +63,31 @@ impl<D: ?Sized> DerefMut for Owner<D> {
     }
 }
 
+impl<D: ?Sized> Drop for Owner<D> {
+    fn drop(&mut self) {
+        self.ptr.drop_from_owner();
+    }
+}
+
 impl<D: ?Sized> TryFrom<&Holder<D>> for Owner<D> {
     type Error = State;
     fn try_from(value: &Holder<D>) -> Result<Self, Self::Error> {
-        Ok(Owner { ptr: Ptr::clone_to(&value.ptr, Role::Owner)? })
+        Ok(Self { ptr: value.ptr().clone_to_owner()? })
     }
 }
 
 impl<D: ?Sized> TryFrom<Holder<D>> for Owner<D> {
     type Error = State;
     fn try_from(value: Holder<D>) -> Result<Self, Self::Error> {
-        Ok(Owner { ptr: Ptr::clone_to(&value.ptr, Role::Owner)? })
+        Ok(Self { ptr: value.ptr().clone_to_owner()? })
     }
 }
 
 impl<D: ?Sized> TryFrom<Viewer<D>> for Owner<D> {
     type Error = State;
     fn try_from(value: Viewer<D>) -> Result<Self, Self::Error> {
-        let h = Holder::from(value);
-        Ok(Owner { ptr: Ptr::clone_to(&h.ptr, Role::Owner)? })
-    }
-}
-
-impl<D: ?Sized> Drop for Owner<D> {
-    fn drop(&mut self) {
-        self.ptr.drop_from(Role::Owner);
+        let holder = Holder::from(value);
+        Ok(Self { ptr: holder.ptr().clone_to_owner()? })
     }
 }
 
@@ -96,7 +99,7 @@ impl<D: ?Sized> Debug for Owner<D> {
 
 impl<D: Default> Default for Owner<D> {
     fn default() -> Self {
-        Owner::new(D::default())
+        Self::new(D::default())
     }
 }
 

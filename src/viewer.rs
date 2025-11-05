@@ -8,47 +8,23 @@ use crate::Holder;
 use crate::Owner;
 use crate::State;
 use crate::ptr::Ptr;
-use crate::ptr::Role;
 
 pub struct Viewer<D: ?Sized> {
-    pub(crate) ptr: Ptr<D>,
+    ptr: Ptr<D>,
 }
 
 impl<D: ?Sized> Viewer<D> {
-    pub fn new(d: D) -> Self
+    pub fn new(data: D) -> Self
     where D: Sized {
-        Viewer { ptr: Ptr::new(d, Role::Viewer) }
+        Self { ptr: Ptr::new_viewer(data) }
     }
 
-    pub fn state(s: &Viewer<D>) -> State {
-        s.ptr.cell().state()
+    pub fn state(viewer: &Self) -> State {
+        viewer.ptr.cell().state()
     }
-}
 
-impl<D: ?Sized> Clone for Viewer<D> {
-    fn clone(&self) -> Self {
-        Viewer { ptr: Ptr::clone_to(&self.ptr, Role::Viewer).unwrap() }
-    }
-}
-
-impl<D: ?Sized> TryFrom<&Holder<D>> for Viewer<D> {
-    type Error = State;
-    fn try_from(value: &Holder<D>) -> Result<Self, Self::Error> {
-        Ok(Viewer { ptr: Ptr::clone_to(&value.ptr, Role::Viewer)? })
-    }
-}
-
-impl<D: ?Sized> TryFrom<Holder<D>> for Viewer<D> {
-    type Error = State;
-    fn try_from(value: Holder<D>) -> Result<Self, Self::Error> {
-        Ok(Viewer { ptr: Ptr::clone_to(&value.ptr, Role::Viewer)? })
-    }
-}
-
-impl<D: ?Sized> From<Owner<D>> for Viewer<D> {
-    fn from(value: Owner<D>) -> Self {
-        let h = Holder::from(value);
-        Viewer { ptr: Ptr::clone_to(&h.ptr, Role::Viewer).unwrap() }
+    pub(crate) fn ptr(&self) -> &Ptr<D> {
+        &self.ptr
     }
 }
 
@@ -60,16 +36,36 @@ impl<D: ?Sized> Deref for Viewer<D> {
     }
 }
 
-impl<D: ?Sized> TryFrom<&Ptr<D>> for Viewer<D> {
-    type Error = State;
-    fn try_from(value: &Ptr<D>) -> Result<Self, Self::Error> {
-        Ok(Viewer { ptr: Ptr::clone_to(value, Role::Viewer)? })
+impl<D: ?Sized> Clone for Viewer<D> {
+    fn clone(&self) -> Self {
+        Self { ptr: self.ptr.clone_to_viewer().unwrap() }
     }
 }
 
 impl<D: ?Sized> Drop for Viewer<D> {
     fn drop(&mut self) {
-        self.ptr.drop_from(Role::Viewer);
+        self.ptr.drop_from_viewer();
+    }
+}
+
+impl<D: ?Sized> TryFrom<&Holder<D>> for Viewer<D> {
+    type Error = State;
+    fn try_from(value: &Holder<D>) -> Result<Self, Self::Error> {
+        Ok(Self { ptr: value.ptr().clone_to_viewer()? })
+    }
+}
+
+impl<D: ?Sized> TryFrom<Holder<D>> for Viewer<D> {
+    type Error = State;
+    fn try_from(value: Holder<D>) -> Result<Self, Self::Error> {
+        Ok(Self { ptr: value.ptr().clone_to_viewer()? })
+    }
+}
+
+impl<D: ?Sized> From<Owner<D>> for Viewer<D> {
+    fn from(value: Owner<D>) -> Self {
+        let holder = Holder::from(value);
+        Self { ptr: holder.ptr().clone_to_viewer().unwrap() }
     }
 }
 
@@ -81,7 +77,7 @@ impl<D: ?Sized> Debug for Viewer<D> {
 
 impl<D: Default> Default for Viewer<D> {
     fn default() -> Self {
-        Viewer::new(D::default())
+        Self::new(D::default())
     }
 }
 

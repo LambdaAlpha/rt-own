@@ -14,13 +14,6 @@ pub(crate) struct Ptr<D: ?Sized> {
     phantom: PhantomData<StateCell<D>>,
 }
 
-#[derive(Debug, Copy, Clone)]
-pub(crate) enum Role {
-    Holder,
-    Viewer,
-    Owner,
-}
-
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct State {
     // the sign bit indicates whether data has been dropped (negative)
@@ -32,20 +25,58 @@ pub struct State {
 }
 
 impl<D: ?Sized> Ptr<D> {
-    pub(crate) fn new(d: D, role: Role) -> Self
+    pub(crate) fn new_holder(data: D) -> Self
     where D: Sized {
-        let ptr = Box::leak(Box::new(StateCell::new(d, role)));
-        Ptr { ptr: ptr.into(), phantom: PhantomData }
+        Self::new(data, State::new_holder())
     }
 
-    pub(crate) fn clone_to(&self, role: Role) -> Result<Ptr<D>, State> {
-        self.cell().clone_to(role)?;
+    pub(crate) fn new_viewer(data: D) -> Self
+    where D: Sized {
+        Self::new(data, State::new_viewer())
+    }
+
+    pub(crate) fn new_owner(data: D) -> Self
+    where D: Sized {
+        Self::new(data, State::new_owner())
+    }
+
+    fn new(data: D, state: State) -> Self
+    where D: Sized {
+        let ptr = Box::leak(Box::new(StateCell::new(data, state)));
+        Ptr { ptr: NonNull::from_mut(ptr), phantom: PhantomData }
+    }
+
+    pub(crate) fn clone_to_holder(&self) -> Self {
+        self.cell().clone_to_holder();
+        Ptr { ptr: self.ptr, phantom: PhantomData }
+    }
+
+    pub(crate) fn clone_to_viewer(&self) -> Result<Self, State> {
+        self.cell().clone_to_viewer()?;
         Ok(Ptr { ptr: self.ptr, phantom: PhantomData })
     }
 
-    pub(crate) fn drop_from(&self, role: Role) {
-        self.cell().drop_from(role);
+    pub(crate) fn clone_to_owner(&self) -> Result<Self, State> {
+        self.cell().clone_to_owner()?;
+        Ok(Ptr { ptr: self.ptr, phantom: PhantomData })
+    }
 
+    pub(crate) fn drop_from_holder(&self) {
+        self.cell().drop_from_holder();
+        self.check_dealloc();
+    }
+
+    pub(crate) fn drop_from_viewer(&self) {
+        self.cell().drop_from_viewer();
+        self.check_dealloc();
+    }
+
+    pub(crate) fn drop_from_owner(&self) {
+        self.cell().drop_from_owner();
+        self.check_dealloc();
+    }
+
+    fn check_dealloc(&self) {
         if self.cell().should_dealloc() {
             let layout = alloc::Layout::for_value(self.cell());
             // SAFETY:
@@ -90,22 +121,45 @@ pub(crate) struct StateCell<D: ?Sized> {
 }
 
 impl<D: ?Sized> StateCell<D> {
-    fn new(d: D, role: Role) -> Self
+    fn new(data: D, state: State) -> Self
     where D: Sized {
-        StateCell { state: Cell::new(State::new(role)), data: UnsafeCell::new(d) }
+        StateCell { state: Cell::new(state), data: UnsafeCell::new(data) }
     }
 
     pub(crate) fn state(&self) -> State {
         self.state.get()
     }
 
-    fn clone_to(&self, role: Role) -> Result<(), State> {
-        self.state.set(self.state.get().clone_to(role)?);
+    fn clone_to_holder(&self) {
+        self.state.set(self.state.get().clone_to_holder());
+    }
+
+    fn clone_to_viewer(&self) -> Result<(), State> {
+        self.state.set(self.state.get().clone_to_viewer()?);
         Ok(())
     }
 
-    fn drop_from(&self, role: Role) {
-        self.state.set(self.state.get().drop_from(role));
+    fn clone_to_owner(&self) -> Result<(), State> {
+        self.state.set(self.state.get().clone_to_owner()?);
+        Ok(())
+    }
+
+    fn drop_from_holder(&self) {
+        self.state.set(self.state.get().drop_from_holder());
+        self.check_drop_data();
+    }
+
+    fn drop_from_viewer(&self) {
+        self.state.set(self.state.get().drop_from_viewer());
+        self.check_drop_data();
+    }
+
+    fn drop_from_owner(&self) {
+        self.state.set(self.state.get().drop_from_owner());
+        self.check_drop_data();
+    }
+
+    fn check_drop_data(&self) {
         if self.state.get().should_drop() {
             // SAFETY: state promises that we can and should drop
             unsafe { self.drop_data() }
@@ -143,9 +197,9 @@ impl<D: ?Sized> StateCell<D> {
         self.state.get().should_dealloc()
     }
 
-    // SAFETY: make sure data not dropped and there is no owner
+    // SAFETY: make sure data not dropped and there is no mut ref
     pub(crate) unsafe fn deref<'a>(&self) -> &'a D {
-        // SAFETY: make sure data not dropped and there is no owner
+        // SAFETY: make sure data not dropped and there is no mut ref
         unsafe { self.data.get().as_ref().unwrap() }
     }
 
@@ -173,55 +227,62 @@ impl State {
         self.viewer_cnt < 0
     }
 
-    fn new(role: Role) -> Self {
-        let (holder_cnt, viewer_cnt) = match role {
-            Role::Holder => (1, 0),
-            Role::Viewer => (0, 1),
-            Role::Owner => (0, isize::MIN),
-        };
-        State { holder_cnt, viewer_cnt }
+    fn new_holder() -> Self {
+        Self { holder_cnt: 1, viewer_cnt: 0 }
     }
 
-    fn clone_to(mut self, role: Role) -> Result<State, State> {
-        match role {
-            Role::Holder => {
-                self.holder_cnt += 1;
-                Ok(self)
-            }
-            Role::Viewer => {
-                if self.is_dropped() || self.is_owned() {
-                    Err(self)
-                } else {
-                    self.viewer_cnt += 1;
-                    Ok(self)
-                }
-            }
-            Role::Owner => {
-                if self.is_dropped() || self.viewer_cnt != 0 {
-                    Err(self)
-                } else {
-                    self.viewer_cnt = isize::MIN;
-                    Ok(self)
-                }
-            }
-        }
+    fn new_viewer() -> Self {
+        Self { holder_cnt: 0, viewer_cnt: 1 }
     }
 
-    fn drop_from(mut self, role: Role) -> State {
-        match role {
-            Role::Holder => self.holder_cnt -= 1,
-            Role::Viewer => self.viewer_cnt -= 1,
-            Role::Owner => self.viewer_cnt = 0,
-        }
+    fn new_owner() -> Self {
+        Self { holder_cnt: 0, viewer_cnt: isize::MIN }
+    }
+
+    fn clone_to_holder(mut self) -> Self {
+        self.holder_cnt += 1;
         self
     }
 
-    fn drop(mut self) -> State {
+    fn clone_to_viewer(mut self) -> Result<Self, Self> {
+        if self.is_dropped() || self.is_owned() {
+            Err(self)
+        } else {
+            self.viewer_cnt += 1;
+            Ok(self)
+        }
+    }
+
+    fn clone_to_owner(mut self) -> Result<Self, Self> {
+        if self.is_dropped() || self.viewer_cnt != 0 {
+            Err(self)
+        } else {
+            self.viewer_cnt = isize::MIN;
+            Ok(self)
+        }
+    }
+
+    fn drop_from_holder(mut self) -> Self {
+        self.holder_cnt -= 1;
+        self
+    }
+
+    fn drop_from_viewer(mut self) -> Self {
+        self.viewer_cnt -= 1;
+        self
+    }
+
+    fn drop_from_owner(mut self) -> Self {
+        self.viewer_cnt = 0;
+        self
+    }
+
+    fn drop(mut self) -> Self {
         self.holder_cnt |= isize::MIN;
         self
     }
 
-    fn reinit(mut self) -> State {
+    fn reinit(mut self) -> Self {
         self.holder_cnt &= isize::MAX;
         self
     }
