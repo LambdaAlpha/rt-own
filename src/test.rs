@@ -3,35 +3,67 @@ use std::ops::DerefMut;
 
 use crate::Holder;
 use crate::Owner;
+use crate::OwnerRef;
 use crate::State;
 use crate::Viewer;
+use crate::ViewerRef;
 
 #[test]
-fn test_example() -> Result<(), State> {
-    // new owner
+fn test_example_owner_viewer_holder() -> Result<(), State> {
+    // new Owner
     let mut owner = Owner::new("hello".to_owned());
-    // owner can mutate data
+    // Owner can mutate data
     owner.push_str(" world!");
-    // owner can view data
-    println!("{}", &**owner); // hello world!
-    // owner -> viewer
+    // Owner can view data
+    assert_eq!(&**owner, "hello world!");
+    // Owner -> viewer
     let viewer1 = Viewer::from(owner);
-    // viewer can view data
-    println!("{}", &**viewer1); // hello world!
-    // multiple `Viewer` instances can coexist with each other
+    // Viewer can view data
+    assert_eq!(&**viewer1, "hello world!");
+    // multiple Viewer instances can coexist with each other
     let viewer2 = Viewer::clone(&viewer1);
-    println!("{}", &**viewer2); // hello world!
-    // viewer -> holder, viewers may also exist alongside `Holder` instances
+    assert_eq!(&**viewer2, "hello world!");
+    // Viewer -> Holder, Viewers may also exist alongside `Holder` instances
     let holder = Holder::from(viewer1);
-    // viewer -> owner, this works because viewer2 is the only viewer instance, and owners may coexist with holders
+    // Viewer -> Owner, this works because viewer2 is the only Viewer instance,
+    // and Owners may coexist with Holders
     let owner = Owner::try_from(viewer2).unwrap();
-    // owner can drop data, even when there are holders
+    // Owner can drop data, even when there are Holders
     Owner::drop_data(owner);
-    // holder can reinit data, when data is dropped
+    // Holder can reinit data, when data is dropped
     Holder::reinit(&holder, "hello new world!".to_owned()).unwrap();
-    // holder -> owner, this works because there is no viewer or owner instance
+    // Holder -> Owner, this works because there is no Viewer or Owner instance
     let owner = Owner::try_from(holder).unwrap();
-    println!("{}", &**owner); // hello new world!
+    assert_eq!(&**owner, "hello new world!");
+    Ok(())
+}
+
+#[test]
+fn test_example_ref() -> Result<(), State> {
+    let owner = Owner::new(("hello".to_owned(), 1));
+    // Owner -> OwnerRef for field projection
+    let mut owner_ref0 = OwnerRef::from(owner);
+    // modify both fields through OwnerRef
+    owner_ref0.0.push_str(" world");
+    assert_eq!(owner_ref0.0, "hello world");
+    owner_ref0.1 = 2;
+    assert_eq!(owner_ref0.1, 2);
+    // project to string field for focused mutable access
+    let mut owner_ref1 = OwnerRef::map(owner_ref0, |t| &mut t.0);
+    owner_ref1.push('!');
+    assert_eq!(&*owner_ref1, "hello world!");
+    // further project to substring
+    let owner_ref2 = OwnerRef::map(owner_ref1, |s| &mut s[6 ..]);
+    assert_eq!(&*owner_ref2, "world!");
+    // recover full ownership
+    let owner = Owner::from(owner_ref2);
+
+    // ViewerRef example with similar projection chain
+    let viewer = Viewer::from(owner);
+    let viewer_ref0 = ViewerRef::from(viewer);
+    let viewer_ref1 = ViewerRef::map(viewer_ref0, |t| &t.0);
+    let viewer_ref2 = ViewerRef::map(viewer_ref1, |s| &s[6 ..]);
+    assert_eq!(&*viewer_ref2, "world!");
     Ok(())
 }
 
@@ -111,7 +143,7 @@ fn test_owner() -> Result<(), State> {
 
 // explicitly drop all variables to make their lifetime clear
 #[test]
-fn test_mix_ref() -> Result<(), State> {
+fn test_holder_viewer_owner() -> Result<(), State> {
     let h1 = Holder::new("".to_owned());
     assert_state(Holder::state(&h1), false, 1, 0, false);
     let v1 = Viewer::try_from(&h1)?; // viewer with holder

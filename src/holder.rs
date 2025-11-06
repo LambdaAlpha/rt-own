@@ -4,8 +4,10 @@ use std::hash::Hash;
 use std::hash::Hasher;
 
 use crate::Owner;
+use crate::OwnerRef;
 use crate::State;
 use crate::Viewer;
+use crate::ViewerRef;
 use crate::ptr::Ptr;
 
 pub struct Holder<D: ?Sized> {
@@ -74,6 +76,30 @@ impl<D: ?Sized> From<&Owner<D>> for Holder<D> {
 impl<D: ?Sized> From<Owner<D>> for Holder<D> {
     fn from(value: Owner<D>) -> Self {
         Self { ptr: Owner::ptr(&value).clone_to_holder() }
+    }
+}
+
+impl<Source: ?Sized, Target: ?Sized> From<&ViewerRef<Source, Target>> for Holder<Source> {
+    fn from(value: &ViewerRef<Source, Target>) -> Self {
+        Self { ptr: ViewerRef::source(value).clone_to_holder() }
+    }
+}
+
+impl<Source: ?Sized, Target: ?Sized> From<ViewerRef<Source, Target>> for Holder<Source> {
+    fn from(value: ViewerRef<Source, Target>) -> Self {
+        Self { ptr: ViewerRef::source(&value).clone_to_holder() }
+    }
+}
+
+impl<Source: ?Sized, Target: ?Sized> From<&OwnerRef<Source, Target>> for Holder<Source> {
+    fn from(value: &OwnerRef<Source, Target>) -> Self {
+        Self { ptr: OwnerRef::source(value).clone_to_holder() }
+    }
+}
+
+impl<Source: ?Sized, Target: ?Sized> From<OwnerRef<Source, Target>> for Holder<Source> {
+    fn from(value: OwnerRef<Source, Target>) -> Self {
+        Self { ptr: OwnerRef::source(&value).clone_to_holder() }
     }
 }
 

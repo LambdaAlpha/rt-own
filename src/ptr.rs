@@ -208,6 +208,10 @@ impl<D: ?Sized> StateCell<D> {
         // SAFETY: make sure data not dropped and there is no ref
         unsafe { self.data.get().as_mut().unwrap() }
     }
+
+    pub(crate) fn data_ptr(&self) -> *mut D {
+        self.data.get()
+    }
 }
 
 impl State {

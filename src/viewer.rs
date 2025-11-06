@@ -6,7 +6,9 @@ use std::ops::Deref;
 
 use crate::Holder;
 use crate::Owner;
+use crate::OwnerRef;
 use crate::State;
+use crate::ViewerRef;
 use crate::ptr::Ptr;
 
 pub struct Viewer<D: ?Sized> {
@@ -64,6 +66,25 @@ impl<D: ?Sized> TryFrom<Holder<D>> for Viewer<D> {
 
 impl<D: ?Sized> From<Owner<D>> for Viewer<D> {
     fn from(value: Owner<D>) -> Self {
+        let holder = Holder::from(value);
+        Self { ptr: Holder::ptr(&holder).clone_to_viewer().unwrap() }
+    }
+}
+
+impl<Source: ?Sized, Target: ?Sized> From<&ViewerRef<Source, Target>> for Viewer<Source> {
+    fn from(value: &ViewerRef<Source, Target>) -> Self {
+        Self { ptr: ViewerRef::source(value).clone_to_viewer().unwrap() }
+    }
+}
+
+impl<Source: ?Sized, Target: ?Sized> From<ViewerRef<Source, Target>> for Viewer<Source> {
+    fn from(value: ViewerRef<Source, Target>) -> Self {
+        Self { ptr: ViewerRef::source(&value).clone_to_viewer().unwrap() }
+    }
+}
+
+impl<Source: ?Sized, Target: ?Sized> From<OwnerRef<Source, Target>> for Viewer<Source> {
+    fn from(value: OwnerRef<Source, Target>) -> Self {
         let holder = Holder::from(value);
         Self { ptr: Holder::ptr(&holder).clone_to_viewer().unwrap() }
     }
