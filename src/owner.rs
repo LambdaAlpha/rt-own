@@ -24,10 +24,6 @@ impl<D: ?Sized> Owner<D> {
         owner.ptr.cell().state()
     }
 
-    pub(crate) fn ptr(&self) -> &Ptr<D> {
-        &self.ptr
-    }
-
     pub fn move_data(owner: Self) -> D
     where D: Sized {
         // SAFETY:
@@ -45,6 +41,10 @@ impl<D: ?Sized> Owner<D> {
         // we change the state to dropped
         // so we won't access the data anymore
         unsafe { owner.ptr.cell().drop_data() }
+    }
+
+    pub(crate) fn ptr(owner: &Self) -> &Ptr<D> {
+        &owner.ptr
     }
 }
 
@@ -72,14 +72,14 @@ impl<D: ?Sized> Drop for Owner<D> {
 impl<D: ?Sized> TryFrom<&Holder<D>> for Owner<D> {
     type Error = State;
     fn try_from(value: &Holder<D>) -> Result<Self, Self::Error> {
-        Ok(Self { ptr: value.ptr().clone_to_owner()? })
+        Ok(Self { ptr: Holder::ptr(value).clone_to_owner()? })
     }
 }
 
 impl<D: ?Sized> TryFrom<Holder<D>> for Owner<D> {
     type Error = State;
     fn try_from(value: Holder<D>) -> Result<Self, Self::Error> {
-        Ok(Self { ptr: value.ptr().clone_to_owner()? })
+        Ok(Self { ptr: Holder::ptr(&value).clone_to_owner()? })
     }
 }
 
@@ -87,7 +87,7 @@ impl<D: ?Sized> TryFrom<Viewer<D>> for Owner<D> {
     type Error = State;
     fn try_from(value: Viewer<D>) -> Result<Self, Self::Error> {
         let holder = Holder::from(value);
-        Ok(Self { ptr: holder.ptr().clone_to_owner()? })
+        Ok(Self { ptr: Holder::ptr(&holder).clone_to_owner()? })
     }
 }
 

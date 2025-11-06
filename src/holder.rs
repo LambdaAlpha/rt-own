@@ -22,10 +22,6 @@ impl<D: ?Sized> Holder<D> {
         holder.ptr.cell().state()
     }
 
-    pub(crate) fn ptr(&self) -> &Ptr<D> {
-        &self.ptr
-    }
-
     pub fn reinit(holder: &Self, data: D) -> Result<(), State>
     where D: Sized {
         let state = holder.ptr.cell().state();
@@ -38,6 +34,10 @@ impl<D: ?Sized> Holder<D> {
         } else {
             Err(state)
         }
+    }
+
+    pub(crate) fn ptr(holder: &Self) -> &Ptr<D> {
+        &holder.ptr
     }
 }
 
@@ -55,25 +55,25 @@ impl<D: ?Sized> Drop for Holder<D> {
 
 impl<D: ?Sized> From<&Viewer<D>> for Holder<D> {
     fn from(value: &Viewer<D>) -> Self {
-        Self { ptr: value.ptr().clone_to_holder() }
+        Self { ptr: Viewer::ptr(value).clone_to_holder() }
     }
 }
 
 impl<D: ?Sized> From<Viewer<D>> for Holder<D> {
     fn from(value: Viewer<D>) -> Self {
-        Self { ptr: value.ptr().clone_to_holder() }
+        Self { ptr: Viewer::ptr(&value).clone_to_holder() }
     }
 }
 
 impl<D: ?Sized> From<&Owner<D>> for Holder<D> {
     fn from(value: &Owner<D>) -> Self {
-        Self { ptr: value.ptr().clone_to_holder() }
+        Self { ptr: Owner::ptr(value).clone_to_holder() }
     }
 }
 
 impl<D: ?Sized> From<Owner<D>> for Holder<D> {
     fn from(value: Owner<D>) -> Self {
-        Self { ptr: value.ptr().clone_to_holder() }
+        Self { ptr: Owner::ptr(&value).clone_to_holder() }
     }
 }
 

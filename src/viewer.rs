@@ -23,8 +23,8 @@ impl<D: ?Sized> Viewer<D> {
         viewer.ptr.cell().state()
     }
 
-    pub(crate) fn ptr(&self) -> &Ptr<D> {
-        &self.ptr
+    pub(crate) fn ptr(viewer: &Self) -> &Ptr<D> {
+        &viewer.ptr
     }
 }
 
@@ -51,21 +51,21 @@ impl<D: ?Sized> Drop for Viewer<D> {
 impl<D: ?Sized> TryFrom<&Holder<D>> for Viewer<D> {
     type Error = State;
     fn try_from(value: &Holder<D>) -> Result<Self, Self::Error> {
-        Ok(Self { ptr: value.ptr().clone_to_viewer()? })
+        Ok(Self { ptr: Holder::ptr(value).clone_to_viewer()? })
     }
 }
 
 impl<D: ?Sized> TryFrom<Holder<D>> for Viewer<D> {
     type Error = State;
     fn try_from(value: Holder<D>) -> Result<Self, Self::Error> {
-        Ok(Self { ptr: value.ptr().clone_to_viewer()? })
+        Ok(Self { ptr: Holder::ptr(&value).clone_to_viewer()? })
     }
 }
 
 impl<D: ?Sized> From<Owner<D>> for Viewer<D> {
     fn from(value: Owner<D>) -> Self {
         let holder = Holder::from(value);
-        Self { ptr: holder.ptr().clone_to_viewer().unwrap() }
+        Self { ptr: Holder::ptr(&holder).clone_to_viewer().unwrap() }
     }
 }
 

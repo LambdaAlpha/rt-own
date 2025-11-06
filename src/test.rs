@@ -205,8 +205,8 @@ fn test_reinit() -> Result<(), State> {
     let h = Holder::from(&o);
     Owner::drop_data(o);
     Holder::reinit(&h, "321".to_owned())?;
-    let r = Viewer::try_from(&h)?;
-    assert_eq!(r.deref(), "321");
+    let v = Viewer::try_from(&h)?;
+    assert_eq!(v.deref(), "321");
     Ok(())
 }
 
