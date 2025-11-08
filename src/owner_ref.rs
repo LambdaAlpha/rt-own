@@ -10,7 +10,6 @@ use crate::Holder;
 use crate::Owner;
 use crate::State;
 use crate::Viewer;
-use crate::ViewerRef;
 use crate::ptr::Ptr;
 use crate::ref_::Ref;
 
@@ -78,18 +77,6 @@ impl<Source: ?Sized> From<Owner<Source>> for OwnerRef<Source, Source> {
         let holder = Holder::from(value);
         let source = Holder::ptr(&holder).clone_to_owner().unwrap();
         Self { ref_: Ref::from_source(source) }
-    }
-}
-
-impl<Source: ?Sized, Target: ?Sized> TryFrom<ViewerRef<Source, Target>>
-    for OwnerRef<Source, Target>
-{
-    type Error = State;
-    fn try_from(value: ViewerRef<Source, Target>) -> Result<Self, Self::Error> {
-        let target = ViewerRef::target(&value);
-        let holder = Holder::from(value);
-        let source = Holder::ptr(&holder).clone_to_owner()?;
-        Ok(OwnerRef { ref_: Ref::new(source, target) })
     }
 }
 

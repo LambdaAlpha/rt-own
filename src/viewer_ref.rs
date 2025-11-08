@@ -3,7 +3,6 @@ use std::fmt::Formatter;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::ops::Deref;
-use std::ptr::NonNull;
 
 use crate::Holder;
 use crate::Owner;
@@ -34,10 +33,6 @@ impl<Source: ?Sized, Target: ?Sized> ViewerRef<Source, Target> {
 
     pub(crate) fn source(viewer: &Self) -> &Ptr<Source> {
         viewer.ref_.source()
-    }
-
-    pub(crate) fn target(owner: &Self) -> NonNull<Target> {
-        owner.ref_.target()
     }
 }
 
