@@ -23,8 +23,10 @@ impl<Source: ?Sized, Target: ?Sized> OwnerRef<Source, Target> {
         owner.ref_.source().cell().state()
     }
 
-    pub fn map<Target2: ?Sized, Map>(mut owner: Self, map: Map) -> OwnerRef<Source, Target2>
-    where Map: FnOnce(&mut Target) -> &mut Target2 {
+    pub fn map<Target2, Map>(mut owner: Self, map: Map) -> OwnerRef<Source, Target2>
+    where
+        Target2: ?Sized + 'static,
+        Map: for<'a> FnOnce(&'a mut Target) -> &'a mut Target2, {
         // SAFETY: when self is alive there is no owner and data hasn't been dropped
         let target = unsafe { owner.ref_.map_target_mut(map) };
         let holder = Holder::from(owner);

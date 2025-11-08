@@ -22,8 +22,10 @@ impl<Source: ?Sized, Target: ?Sized> ViewerRef<Source, Target> {
         viewer.ref_.source().cell().state()
     }
 
-    pub fn map<Target2: ?Sized, Map>(viewer: Self, map: Map) -> ViewerRef<Source, Target2>
-    where Map: FnOnce(&Target) -> &Target2 {
+    pub fn map<Target2, Map>(viewer: Self, map: Map) -> ViewerRef<Source, Target2>
+    where
+        Target2: ?Sized + 'static,
+        Map: for<'a> FnOnce(&'a Target) -> &'a Target2, {
         // SAFETY: when self is alive there is no owner and data hasn't been dropped
         let target = unsafe { viewer.ref_.map_target(map) };
         let source = viewer.ref_.source().clone_to_viewer().unwrap();

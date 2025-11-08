@@ -26,18 +26,20 @@ impl<Source: ?Sized, Target: ?Sized> Ref<Source, Target> {
     }
 
     // SAFETY: make sure data not dropped and there is no mut ref
-    pub(crate) unsafe fn map_target<Target2: ?Sized, Map>(&self, map: Map) -> NonNull<Target2>
-    where Map: FnOnce(&Target) -> &Target2 {
+    pub(crate) unsafe fn map_target<Target2, Map>(&self, map: Map) -> NonNull<Target2>
+    where
+        Target2: ?Sized + 'static,
+        Map: for<'a> FnOnce(&'a Target) -> &'a Target2, {
         // SAFETY: make sure data not dropped and there is no mut ref
         let target = unsafe { self.target.as_ref() };
         NonNull::from_ref(map(target))
     }
 
     // SAFETY: make sure data not dropped and there is no ref
-    pub(crate) unsafe fn map_target_mut<Target2: ?Sized, Map>(
-        &mut self, map: Map,
-    ) -> NonNull<Target2>
-    where Map: FnOnce(&mut Target) -> &mut Target2 {
+    pub(crate) unsafe fn map_target_mut<Target2, Map>(&mut self, map: Map) -> NonNull<Target2>
+    where
+        Target2: ?Sized + 'static,
+        Map: for<'a> FnOnce(&'a mut Target) -> &'a mut Target2, {
         // SAFETY: make sure data not dropped and there is no ref
         let target = unsafe { self.target.as_mut() };
         NonNull::from_ref(map(target))
