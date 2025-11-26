@@ -31,6 +31,18 @@ impl<Source: ?Sized, Target: ?Sized> ViewerRef<Source, Target> {
         ViewerRef { ref_: Ref::new(source, target) }
     }
 
+    pub fn try_map<Target2, Err, Map>(
+        viewer: Self, map: Map,
+    ) -> Result<ViewerRef<Source, Target2>, Err>
+    where
+        Target2: ?Sized + 'static,
+        Map: for<'a> FnOnce(&'a Target) -> Result<&'a Target2, Err>, {
+        // SAFETY: when self is alive there is no owner and data hasn't been dropped
+        let target = unsafe { viewer.ref_.try_map_target(map) }?;
+        let source = viewer.ref_.source().clone_to_viewer().unwrap();
+        Ok(ViewerRef { ref_: Ref::new(source, target) })
+    }
+
     pub(crate) fn source(viewer: &Self) -> &Ptr<Source> {
         viewer.ref_.source()
     }

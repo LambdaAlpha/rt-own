@@ -33,6 +33,19 @@ impl<Source: ?Sized, Target: ?Sized> OwnerRef<Source, Target> {
         OwnerRef { ref_: Ref::new(source, target) }
     }
 
+    pub fn try_map<Target2, Err, Map>(
+        mut owner: Self, map: Map,
+    ) -> Result<OwnerRef<Source, Target2>, Err>
+    where
+        Target2: ?Sized + 'static,
+        Map: for<'a> FnOnce(&'a mut Target) -> Result<&'a mut Target2, Err>, {
+        // SAFETY: when self is alive there is no owner and data hasn't been dropped
+        let target = unsafe { owner.ref_.try_map_target_mut(map) }?;
+        let holder = Holder::from(owner);
+        let source = Holder::ptr(&holder).clone_to_owner().unwrap();
+        Ok(OwnerRef { ref_: Ref::new(source, target) })
+    }
+
     pub(crate) fn source(owner: &Self) -> &Ptr<Source> {
         owner.ref_.source()
     }
