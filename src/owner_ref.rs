@@ -63,6 +63,22 @@ impl<Source: ?Sized, Target: ?Sized> DerefMut for OwnerRef<Source, Target> {
     }
 }
 
+impl<Source: ?Sized> TryFrom<&Holder<Source>> for OwnerRef<Source, Source> {
+    type Error = State;
+    fn try_from(holder: &Holder<Source>) -> Result<Self, Self::Error> {
+        let source = Holder::ptr(holder).clone_to_owner()?;
+        Ok(Self { ref_: Ref::from_source(source) })
+    }
+}
+
+impl<Source: ?Sized> TryFrom<Holder<Source>> for OwnerRef<Source, Source> {
+    type Error = State;
+    fn try_from(holder: Holder<Source>) -> Result<Self, Self::Error> {
+        let source = Holder::ptr(&holder).clone_to_owner()?;
+        Ok(Self { ref_: Ref::from_source(source) })
+    }
+}
+
 impl<Source: ?Sized> TryFrom<Viewer<Source>> for OwnerRef<Source, Source> {
     type Error = State;
     fn try_from(value: Viewer<Source>) -> Result<Self, Self::Error> {

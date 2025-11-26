@@ -58,6 +58,22 @@ impl<Source: ?Sized, Target: ?Sized> Deref for ViewerRef<Source, Target> {
     }
 }
 
+impl<Source: ?Sized> TryFrom<&Holder<Source>> for ViewerRef<Source, Source> {
+    type Error = State;
+    fn try_from(holder: &Holder<Source>) -> Result<Self, Self::Error> {
+        let source = Holder::ptr(holder).clone_to_viewer()?;
+        Ok(Self { ref_: Ref::from_source(source) })
+    }
+}
+
+impl<Source: ?Sized> TryFrom<Holder<Source>> for ViewerRef<Source, Source> {
+    type Error = State;
+    fn try_from(holder: Holder<Source>) -> Result<Self, Self::Error> {
+        let source = Holder::ptr(&holder).clone_to_viewer()?;
+        Ok(Self { ref_: Ref::from_source(source) })
+    }
+}
+
 impl<Source: ?Sized> From<&Viewer<Source>> for ViewerRef<Source, Source> {
     fn from(value: &Viewer<Source>) -> Self {
         let source = Viewer::ptr(value).clone_to_viewer().unwrap();
